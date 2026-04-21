@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+.mypy_cache/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Environment
+.env
+.env.*
+
+# Claude Code internal tooling
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
