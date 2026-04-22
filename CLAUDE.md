@@ -21,8 +21,8 @@ Three-file structure with strict separation of concerns:
 ## Key Domain Concepts
 
 - **WEI (Weighted Experience Index):** `sum(Grade_Score × Service)` normalised to 1.0 at baseline. The tipping-point threshold is 0.85 (15% decline). Defined in `simulation.py:compute_wei_numerator`.
-- **Simulation order per year:** Age+1 → Attrition (flat rate) → Retirement proxy (age-scaled probability, applied to attrition survivors only to avoid double-counting per AS-206) → Early Careers inflow at Age 21, Grade_Score 1.
-- **Required CSV columns:** `ID`, `Age`, `Service`, `Grade_Score`, `Job_Family`.
+- **Simulation order per year:** Age+1 → Attrition → Retirement proxy → EC cohort pipeline advancement + outturn → Headcount gap calculation → Experienced hires fill (market-strength limited) → Metrics recorded (WEI, headcount, age bands, grade snapshot).
+- **Required CSV columns:** `ID`, `Age`, `Service`, `Job_Family`, and either `Grade` or `Grade_Score`.
 
 ## Design
 
@@ -46,5 +46,6 @@ Install: `pip install -r requirements.txt` (venv at `.venv/`).
 
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
-shell commands, and other important information, read the current plan
+shell commands, and other important information, read the current plan at
+`specs/001-simulation-enhancements/plan.md`
 <!-- SPECKIT END -->

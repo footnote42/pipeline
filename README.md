@@ -1,4 +1,4 @@
-# Pipline — Workforce Experience Scenario Model
+# Pipeline — Workforce Experience Scenario Model
 
 A Streamlit app for projecting workforce age and experience profiles over time, using the
 Weighted Experience Index (WEI) as the primary tipping-point measure.

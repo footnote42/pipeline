@@ -1,4 +1,4 @@
-﻿"""
+"""
 simulation.py
 Core workforce simulation engine.
 All functions are decoupled so the WEI formula can be swapped independently.
@@ -7,19 +7,88 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-REQUIRED_COLS = {"ID", "Age", "Service", "Grade_Score", "Job_Family"}
+# ---------------------------------------------------------------------------
+# Core validation constants
+# ---------------------------------------------------------------------------
 
+REQUIRED_COLS = {"ID", "Age", "Service", "Job_Family"}
+
+# ---------------------------------------------------------------------------
+# Grade structure constants (T001)
+# ---------------------------------------------------------------------------
+
+GRADE_SCORE_MAP: dict[str, int] = {
+    'A1': 1, 'A2': 2, 'B1': 3, 'B2': 4, 'C1': 5, 'C2': 6, 'D': 7
+}
+
+GRADE_LABELS: list[str] = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'D']
+
+EXP_HIRE_PRESETS: dict[str, dict] = {
+    'junior': {'age_mid': 31, 'age_sd': 4, 'grade': 'A2', 'grade_score': 2},
+    'mid':    {'age_mid': 38, 'age_sd': 6, 'grade': 'B2', 'grade_score': 4},
+    'senior': {'age_mid': 47, 'age_sd': 7, 'grade': 'C1', 'grade_score': 5},
+}
+
+MARKET_STRENGTH_PRESETS: dict[str, float] = {
+    'strong':   1.00,
+    'moderate': 0.70,
+    'weak':     0.40,
+}
+
+EC_COHORT_DEFAULTS: dict[str, dict] = {
+    'L3': {
+        'programme_years': 4,
+        'outturn_grade': 'A1',
+        'outturn_age': 21,
+        'outturn_service': 4,
+    },
+    'L6': {
+        'programme_years': 4,
+        'outturn_grade': 'B1',
+        'outturn_age': 22,
+        'outturn_service': 4,
+    },
+    'Grad': {
+        'programme_years': 2,
+        'outturn_grade': 'B1',
+        'outturn_age': 23,
+        'outturn_service': 2,
+    },
+}
+
+
+# ---------------------------------------------------------------------------
+# Load and validate
+# ---------------------------------------------------------------------------
 
 def load_workforce(path: str) -> pd.DataFrame:
-    """Load a workforce CSV and validate required columns."""
+    """
+    Load a workforce CSV and validate required columns.
+
+    Accepts either a 'Grade' string column (A1–D) or a numeric 'Grade_Score'
+    column. If 'Grade' is present it takes precedence; 'Grade_Score' is derived
+    via GRADE_SCORE_MAP. If only 'Grade_Score' is present, 'Grade' is added as
+    an empty string. Neither column present raises ValueError.
+    """
     df = pd.read_csv(path)
     missing = REQUIRED_COLS - set(df.columns)
     if missing:
         raise ValueError(f"CSV is missing required columns: {missing}")
+    if "Grade" not in df.columns and "Grade_Score" not in df.columns:
+        raise ValueError(
+            "CSV must contain either a 'Grade' column (A1–D) or a 'Grade_Score' column"
+        )
     df = df.copy()
     df["Age"] = df["Age"].astype(int)
     df["Service"] = df["Service"].astype(int)
-    df["Grade_Score"] = df["Grade_Score"].clip(1, 10).astype(float)
+    if "Grade" in df.columns:
+        unknown = set(df["Grade"].dropna().unique()) - set(GRADE_SCORE_MAP.keys())
+        if unknown:
+            raise ValueError(f"Unknown grade values in 'Grade' column: {sorted(unknown)}")
+        df["Grade_Score"] = df["Grade"].map(GRADE_SCORE_MAP).astype(float)
+    else:
+        df["Grade_Score"] = df["Grade_Score"].clip(1, 10).astype(float)
+        df["Grade"] = ""
     return df.reset_index(drop=True)
 
 
@@ -62,43 +131,115 @@ def _apply_attrition(df: pd.DataFrame, attrition_rate: float, rng: np.random.Gen
 
 
 def _apply_retirement_proxy(
-    df: pd.DataFrame, threshold_age: int, base_prob: float, rng: np.random.Generator
+    df: pd.DataFrame, threshold_age: int, max_age: int, base_prob: float, rng: np.random.Generator
 ) -> pd.DataFrame:
     """
-    Retirement proxy (AS-201 to AS-206).
-    Probability increases linearly with years over threshold, capped at 0.95.
-    Applies only to survivors of attrition to avoid double-counting.
+    US3: Extended Graduated Retirement Curve.
+    Probability increases linearly from base_prob at threshold_age to 1.0 at max_age.
+    Applies only to survivors of attrition to avoid double-counting (AS-206).
     """
-    over = df["Age"] >= threshold_age
-    years_over = (df["Age"] - threshold_age).clip(lower=0)
-    scaled = (base_prob + years_over * 0.05).clip(upper=0.95)
+    if len(df) == 0:
+        return df
+
+    p = np.zeros(len(df))
+    age = df["Age"].values
+    
+    mask_ramp = (age >= threshold_age) & (age <= max_age)
+    if max_age > threshold_age:
+        p[mask_ramp] = base_prob + (1.0 - base_prob) * (age[mask_ramp] - threshold_age) / (max_age - threshold_age)
+    else:
+        p[mask_ramp] = 1.0
+        
+    p[age > max_age] = 1.0
+    p = np.clip(p, 0.0, 1.0)
+    
     draw = rng.random(len(df))
-    keep = ~over | (draw >= scaled)
+    keep = draw >= p
     return df[keep].copy()
 
 
-def _apply_inflow(df: pd.DataFrame, annual_intake: int, year: int, next_id: int):
-    """Add Early Careers joiners at Age 21, Grade_Score 1 (FR-003/004)."""
-    if annual_intake <= 0:
+def _advance_ec_pipeline(pipeline: list[float], annual_intake: int, dropout_rate: float, programme_years: int) -> tuple[list[float], int]:
+    """US4: Advance pipeline, dropouts applied, pop outturn from the end."""
+    reduced = [p * (1.0 - dropout_rate) for p in pipeline]
+    outturn = int(round(reduced[-1])) if len(reduced) > 0 else 0
+    updated_pipeline = [float(annual_intake)] + reduced[:-1]
+    return updated_pipeline, outturn
+
+
+def _apply_ec_outturn(df: pd.DataFrame, outturn_dict: dict[str, int], next_id: int, rng: np.random.Generator) -> tuple[pd.DataFrame, int]:
+    """US4: Apply EC cohort pipeline outturn to dataframe."""
+    total_outturn = sum(outturn_dict.values())
+    if total_outturn == 0:
         return df, next_id
+        
     families = df["Job_Family"].value_counts(normalize=True)
-    rng_local = np.random.default_rng(year * 1000)
     new_rows = []
-    for _ in range(annual_intake):
-        idx = np.searchsorted(families.values.cumsum(), rng_local.random())
+    
+    for cohort_type, count in outturn_dict.items():
+        if count <= 0:
+            continue
+        defaults = EC_COHORT_DEFAULTS[cohort_type]
+        for _ in range(count):
+            idx = np.searchsorted(families.values.cumsum(), rng.random())
+            idx = min(idx, len(families) - 1)
+            new_rows.append({
+                "ID": f"EC_{next_id:04d}",
+                "Age": defaults["outturn_age"],
+                "Service": defaults["outturn_service"],
+                "Grade_Score": float(GRADE_SCORE_MAP[defaults["outturn_grade"]]),
+                "Grade": defaults["outturn_grade"],
+                "Job_Family": families.index[idx],
+            })
+            next_id += 1
+            
+    out_df = pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True) if new_rows else df
+    return out_df, next_id
+
+
+def _apply_experienced_hires(
+    df: pd.DataFrame, ceiling: int | None, profile_key: str, market_key: str, rng: np.random.Generator, next_id: int
+) -> tuple[pd.DataFrame, float, float, int]:
+    """US2: Fill ceiling gap with experienced hires (step 6)."""
+    if ceiling is None:
+        return df, 0.0, 0.0, next_id
+    
+    gap = max(0, ceiling - len(df))
+    if gap <= 0:
+        return df, 0.0, 0.0, next_id
+        
+    hires = min(gap, int(round(gap * MARKET_STRENGTH_PRESETS[market_key])))
+    demand = float(gap)
+    
+    if hires <= 0:
+        return df, 0.0, demand, next_id
+        
+    preset = EXP_HIRE_PRESETS[profile_key]
+    families = df["Job_Family"].value_counts(normalize=True)
+    new_rows = []
+    
+    for _ in range(hires):
+        age = int(round(rng.normal(preset['age_mid'], preset['age_sd'])))
+        age = max(20, min(75, age))
+        idx = np.searchsorted(families.values.cumsum(), rng.random())
         idx = min(idx, len(families) - 1)
         new_rows.append({
-            "ID": f"EC{year:02d}_{next_id:04d}",
-            "Age": 21, "Service": 0, "Grade_Score": 1.0,
+            "ID": f"EH_{next_id:04d}",
+            "Age": age,
+            "Service": max(0, age - 22),
+            "Grade_Score": float(preset['grade_score']),
+            "Grade": preset['grade'],
             "Job_Family": families.index[idx],
         })
         next_id += 1
-    return pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True), next_id
+        
+    out_df = pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True)
+    return out_df, float(hires), demand, next_id
 
 
 def simulate_year(
     df: pd.DataFrame, *, attrition_rate: float, retirement_age_threshold: int,
-    retirement_prob: float, annual_intake: int, year: int, next_id: int,
+    retirement_max_age: int,
+    retirement_prob: float, year: int,
     rng: np.random.Generator,
 ):
     """Advance workforce by one year. Order: Age -> Attrition -> Retirement -> Inflow."""
@@ -106,9 +247,8 @@ def simulate_year(
     df["Age"] += 1
     df["Service"] += 1
     df = _apply_attrition(df, attrition_rate, rng)
-    df = _apply_retirement_proxy(df, retirement_age_threshold, retirement_prob, rng)
-    df, next_id = _apply_inflow(df, annual_intake, year, next_id)
-    return df, next_id
+    df = _apply_retirement_proxy(df, retirement_age_threshold, retirement_max_age, retirement_prob, rng)
+    return df
 
 
 # ---------------------------------------------------------------------------
@@ -116,22 +256,66 @@ def simulate_year(
 # ---------------------------------------------------------------------------
 
 def run_projection(
-    baseline_df: pd.DataFrame, *, years: int = 10,
-    attrition_rate: float = 0.05, retirement_age_threshold: int = 60,
-    retirement_prob: float = 0.20, annual_intake: int = 50, seed: int = 42,
+    df: pd.DataFrame, *,
+    years: int = 10,
+    attrition_rate: float = 0.05,
+    retirement_threshold: int = 60,
+    retirement_max_age: int = 75,
+    retirement_base_prob: float = 0.05,
+    ec_config: dict | None = None,
+    ceiling: int | None = None,
+    exp_hire_profile: str = 'mid',
+    market_strength: str = 'moderate',
+    seed: int = 42,
+    # Legacy parameter aliases — accepted for backward compatibility with existing callers
+    retirement_age_threshold: int | None = None,
+    retirement_prob: float | None = None,
+    annual_intake: int = 0,
 ) -> dict:
     """
     Project workforce over `years` years.
-    Returns: wei_series, headcount, snapshots, age_bands, baseline_numerator.
+
+    Returns a dict with keys:
+      wei_series, headcount, snapshots, age_bands, baseline_numerator,
+      recruiting_demand, experienced_hires_added, ec_outturn, grade_snapshots.
+
+    New keys (recruiting_demand, experienced_hires_added, ec_outturn, grade_snapshots)
+    are populated in later phases (US1–US5). They are initialised here so callers
+    can safely access them without KeyError.
     """
+    # Resolve legacy aliases so existing app.py callers continue to work
+    if retirement_age_threshold is not None:
+        retirement_threshold = retirement_age_threshold
+    if retirement_prob is not None:
+        retirement_base_prob = retirement_prob
+
     rng = np.random.default_rng(seed)
-    baseline_numerator = compute_wei_numerator(baseline_df)
-    results = {
-        "wei_series": [], "headcount": [],
-        "snapshots": {}, "age_bands": {},
-        "baseline_numerator": baseline_numerator,
+    baseline_numerator = compute_wei_numerator(df)
+    if ec_config is None:
+        ec_config = {
+            "L3": {"intake": 0, "dropout": 0.0},
+            "L6": {"intake": 0, "dropout": 0.0},
+            "Grad": {"intake": annual_intake, "dropout": 0.0},
+        }
+
+    ec_state = {
+        'L3': [0.0] * EC_COHORT_DEFAULTS['L3']['programme_years'],
+        'L6': [0.0] * EC_COHORT_DEFAULTS['L6']['programme_years'],
+        'Grad': [0.0] * EC_COHORT_DEFAULTS['Grad']['programme_years'],
     }
-    current_df = baseline_df.copy()
+
+    results: dict = {
+        "wei_series": [],
+        "headcount": [],
+        "snapshots": {},
+        "age_bands": {},
+        "baseline_numerator": baseline_numerator,
+        "recruiting_demand": [],
+        "experienced_hires_added": [],
+        "ec_outturn": {"L3": [], "L6": [], "Grad": []},
+        "grade_snapshots": [],
+    }
+    current_df = df.copy()
     next_id = 1
     for year in range(years + 1):
         wei = compute_wei(current_df, baseline_numerator)
@@ -141,11 +325,47 @@ def run_projection(
         results["age_bands"][year] = (
             assign_age_band(current_df["Age"]).value_counts().sort_index()
         )
+        
+        if "Grade" in current_df.columns:
+            grade_counts = current_df["Grade"].value_counts().to_dict()
+        else:
+            grade_counts = {}
+            
+        grade_snap = {g: int(grade_counts.get(g, 0)) for g in GRADE_LABELS}
+        unknown_str_count = sum(v for k, v in grade_counts.items() if k not in GRADE_LABELS)
+        grade_snap["Unknown"] = int(unknown_str_count)
+        
+        results["grade_snapshots"].append(grade_snap)
+
         if year < years:
-            current_df, next_id = simulate_year(
-                current_df, attrition_rate=attrition_rate,
-                retirement_age_threshold=retirement_age_threshold,
-                retirement_prob=retirement_prob, annual_intake=annual_intake,
-                year=year + 1, next_id=next_id, rng=rng,
+            current_df = simulate_year(
+                current_df,
+                attrition_rate=attrition_rate,
+                retirement_age_threshold=retirement_threshold,
+                retirement_max_age=retirement_max_age,
+                retirement_prob=retirement_base_prob,
+                year=year + 1,
+                rng=rng,
             )
+            
+            # Step 4: Early Careers Outturn
+            outturn_dict = {}
+            for ctype in ["L3", "L6", "Grad"]:
+                intake = ec_config[ctype]["intake"]
+                dropout = ec_config[ctype]["dropout"]
+                prog_years = EC_COHORT_DEFAULTS[ctype]["programme_years"]
+                updated_pipeline, outturn = _advance_ec_pipeline(
+                    ec_state[ctype], intake, dropout, prog_years
+                )
+                ec_state[ctype] = updated_pipeline
+                outturn_dict[ctype] = outturn
+                results["ec_outturn"][ctype].append(outturn)
+                
+            current_df, next_id = _apply_ec_outturn(current_df, outturn_dict, next_id, rng)
+            current_df, hires, demand, next_id = _apply_experienced_hires(
+                current_df, ceiling, exp_hire_profile, market_strength, rng, next_id
+            )
+            if ceiling is not None:
+                results["recruiting_demand"].append(demand)
+                results["experienced_hires_added"].append(hires)
     return results

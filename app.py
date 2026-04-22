@@ -1,4 +1,4 @@
-﻿"""
+"""
 app.py
 ------
 Workforce Scenario Modelling App — Streamlit entry point.
@@ -10,7 +10,7 @@ import numpy as np
 import os
 
 from simulation import load_workforce, run_projection, AGE_BAND_LABELS, REQUIRED_COLS
-from charts import wei_trend_chart, age_band_chart, headcount_waterfall
+from charts import wei_trend_chart, age_band_chart, headcount_waterfall, recruiting_demand_chart, grade_snapshot_chart
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -110,29 +110,49 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("## Scenario Controls")
 
-    attrition_rate = st.slider(
-        "Annual Attrition Rate (%)", min_value=1, max_value=25, value=6, step=1,
-        help="Flat probability that any employee leaves in a given year (AS-101)."
-    ) / 100
+    with st.expander("Attrition", expanded=True):
+        attrition_rate = st.slider(
+            "Annual Attrition Rate (%)", min_value=1, max_value=25, value=6, step=1,
+            help="Flat probability that any employee leaves in a given year (AS-101)."
+        ) / 100
 
-    retirement_age = st.slider(
-        "Retirement Proxy Threshold (Age)", min_value=55, max_value=68, value=60, step=1,
-        help="Age above which an increasing retirement probability applies (AS-202)."
-    )
+    with st.expander("Retirement", expanded=False):
+        retirement_age = st.slider(
+            "Retirement Threshold (Age)", min_value=55, max_value=68, value=60, step=1,
+            help="Age at which graduation curve begins (AS-202)."
+        )
+        retirement_max_age = st.number_input(
+            "Retirement Max Age (100% exit)", min_value=65, max_value=80, value=75, step=1
+        )
+        retirement_prob = st.slider(
+            "Base Retirement Probability (%)", min_value=0, max_value=60, value=5, step=1,
+            help="Starting annual exit probability at the threshold age (AS-203)."
+        ) / 100
 
-    retirement_prob = st.slider(
-        "Base Retirement Probability (%)", min_value=5, max_value=60, value=20, step=5,
-        help="Starting annual exit probability at the threshold age — scales up year-on-year (AS-203)."
-    ) / 100
+    with st.expander("Early Careers", expanded=False):
+        l3_intake = st.number_input("L3 Apprentice Intake", min_value=0, max_value=200, value=0, step=5)
+        l6_intake = st.number_input("L6 Apprentice Intake", min_value=0, max_value=200, value=0, step=5)
+        grad_intake = st.number_input("Graduate Intake", min_value=0, max_value=200, value=50, step=5)
+        ec_dropout = st.slider("EC Flow Dropout Rate (%)", min_value=0, max_value=50, value=10, step=1) / 100
+        
+        ec_config = {
+            "L3": {"intake": l3_intake, "dropout": ec_dropout},
+            "L6": {"intake": l6_intake, "dropout": ec_dropout},
+            "Grad": {"intake": grad_intake, "dropout": ec_dropout},
+        }
 
-    annual_intake = st.slider(
-        "Early Careers Annual Intake", min_value=0, max_value=200, value=50, step=5,
-        help="Number of joiners added each year at Age 21, Grade_Score 1 (FR-003/004)."
-    )
+    with st.expander("Experienced Hires", expanded=False):
+        exp_hire_profile = st.radio("Hire Profile Seniority", options=["junior", "mid", "senior"], index=1)
+        market_strength = st.slider(
+            "Market Strength Fill Rate (%)", min_value=0, max_value=100, value=50, step=10,
+            help="Percentage of the unfilled headcount gap that can be filled by experienced hires."
+        ) / 100
 
-    projection_years = st.slider(
-        "Projection Horizon (Years)", min_value=3, max_value=15, value=10, step=1
-    )
+    with st.expander("Headcount Ceiling", expanded=False):
+        ceiling = st.number_input("Maximum Headcount", min_value=500, value=1100, step=10)
+
+    with st.expander("Projection Horizon", expanded=False):
+        projection_years = st.slider("Projection Horizon (Years)", 5, 20, 10)
 
     st.markdown("---")
     run_btn = st.button("Run Simulation", type="primary", use_container_width=True)
@@ -185,8 +205,13 @@ if "params" not in st.session_state:
 
 current_params = dict(
     attrition_rate=attrition_rate, retirement_age_threshold=retirement_age,
-    retirement_prob=retirement_prob, annual_intake=annual_intake,
+    retirement_max_age=retirement_max_age,
+    retirement_prob=retirement_prob,
+    ec_config=ec_config,
     years=projection_years,
+    ceiling=ceiling,
+    exp_hire_profile=exp_hire_profile,
+    market_strength=market_strength,
 )
 
 # Auto-run on first load or when params change
@@ -209,7 +234,7 @@ final_wei   = wei_series[-1]
 peak_wf     = max(headcount)
 trough_yr   = next((y for y, w in enumerate(wei_series) if w < TIPPING_POINT), None)
 
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5 = st.columns(5)
 with col1:
     st.metric("Baseline Headcount",  f"{len(baseline_df):,}")
 with col2:
@@ -224,6 +249,13 @@ with col4:
         st.metric("Tipping Point (WEI < 0.85)", f"Year {trough_yr}", delta="Risk identified", delta_color="inverse")
     else:
         st.metric("Tipping Point (WEI < 0.85)", "Not reached", delta="Within safe range", delta_color="normal")
+with col5:
+    if results.get("recruiting_demand"):
+        total_demand = sum(results["recruiting_demand"])
+        total_hires = sum(results["experienced_hires_added"])
+        st.metric("Total Recruiting Demand", f"{int(total_demand):,}", delta=f"{int(total_hires):,} hired")
+    else:
+        st.metric("Total Recruiting Demand", "N/A", delta="No ceiling")
 
 st.markdown("<div style='margin-top:1rem;'></div>", unsafe_allow_html=True)
 
@@ -248,18 +280,38 @@ with tab1:
     scenario_label = (
         f"Attrition {attrition_rate:.0%} | Retirement threshold {retirement_age} | Intake {annual_intake}/yr"
     )
-    fig_wei = wei_trend_chart(years_axis, wei_series, headcount, scenario_label)
+    fig_wei = wei_trend_chart(years_axis, wei_series, headcount, scenario_label, ceiling=current_params["ceiling"])
     st.plotly_chart(fig_wei, use_container_width=True)
 
     st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
     st.plotly_chart(headcount_waterfall(headcount, years_axis), use_container_width=True)
 
+    if results.get("recruiting_demand"):
+        fig_demand = recruiting_demand_chart(
+            years_axis[1:],
+            results["recruiting_demand"],
+            results["experienced_hires_added"],
+            scenario_label
+        )
+        st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
+        st.plotly_chart(fig_demand, use_container_width=True)
+
 # ---- Tab 2: Demographics ----------------------------------------------------
 with tab2:
+    max_yr = projection_years
+
+    st.markdown("#### Grade Distribution")
+    st.caption("Headcount overview per grade for a specific year.")
+    selected_grade_year = st.slider("Select Year for Grade Snapshot", min_value=0, max_value=max_yr, value=max_yr, step=1)
+    
+    if results.get("grade_snapshots"):
+        fig_grades = grade_snapshot_chart(results["grade_snapshots"], selected_grade_year)
+        st.plotly_chart(fig_grades, use_container_width=True)
+
+    st.markdown("---")
     st.markdown("#### Age-Band Distribution")
     st.caption("Select which years to display in the comparison view.")
 
-    max_yr = projection_years
     default_years = sorted(set([0, max_yr // 2, max_yr]))
     selected_display = st.multiselect(
         "Years to compare",
@@ -318,9 +370,9 @@ with tab3:
             "Sensitivity": "H",
         },
         {
-            "Parameter": "Early Careers Annual Intake",
-            "Value": str(annual_intake),
-            "Range available": "0 – 200",
+            "Parameter": "Early Careers Intake Configuration",
+            "Value": f"L3: {l3_intake}, L6: {l6_intake}, Grad: {grad_intake}",
+            "Range available": "0 – 200 per tier",
             "Register ref": "AS-406 / AS-403",
             "Owner": "Requester / Customer Owner",
             "Sensitivity": "H",
@@ -397,3 +449,9 @@ with tab3:
         "WEI Status": ["Below tipping point" if w < TIPPING_POINT else "Within safe range" for w in wei_series],
     })
     st.dataframe(summary_df, use_container_width=True, hide_index=True)
+
+    st.markdown("#### Early Careers Outturn Pipeline")
+    if results.get("ec_outturn"):
+        ec_df = pd.DataFrame(results["ec_outturn"])
+        ec_df.index = [f"Year {y}" for y in range(1, len(ec_df) + 1)]
+        st.dataframe(ec_df.T, use_container_width=True)

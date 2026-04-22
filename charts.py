@@ -1,4 +1,4 @@
-﻿"""
+"""
 charts.py
 Plotly chart builders for the Workforce Scenario Modelling App.
 Each function returns a go.Figure — keep display logic in app.py.
@@ -35,6 +35,7 @@ def wei_trend_chart(
     wei_series: list[float],
     headcount: list[int],
     scenario_name: str = "Scenario",
+    ceiling: int | None = None,
 ) -> go.Figure:
     """Executive Summary: WEI trend with tipping-point band and headcount secondary axis."""
     fig = go.Figure()
@@ -78,6 +79,14 @@ def wei_trend_chart(
         hovertemplate="Year %{x}: %{y} employees<extra></extra>",
         opacity=0.7,
     ))
+
+    # Optional Headcount Ceiling reference line
+    if ceiling is not None:
+        fig.add_hline(
+            y=ceiling, yref="y2", line_dash="dash", line_color="#FF5C32", line_width=1.5,
+            annotation_text=f"Ceiling: {ceiling}", annotation_position="top right",
+            annotation_font_color="#FF5C32",
+        )
 
     # Tipping-point marker
     for yr, w in zip(years, wei_series):
@@ -147,6 +156,57 @@ def headcount_waterfall(headcount: list[int], years: list[int]) -> go.Figure:
         yaxis=dict(title="Headcount Delta", gridcolor=GRID, zeroline=True, zerolinecolor=NEUTRAL),
         xaxis=dict(gridcolor=GRID),
         showlegend=False,
+    )
+    fig.update_layout(**layout)
+    return fig
+
+
+def recruiting_demand_chart(
+    years: list[int],
+    demand: list[float],
+    hires: list[float],
+    scenario_name: str = "Scenario",
+) -> go.Figure:
+    """Grouped bar chart for unfilled headcount gap and actual hires."""
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        name="Recruiting Demand", x=years, y=demand,
+        marker_color="#FF5C32",
+        hovertemplate="Year %{x}: %{y} gap<extra></extra>",
+    ))
+    fig.add_trace(go.Bar(
+        name="Hires Added", x=years, y=hires,
+        marker_color="#38BDF8",
+        hovertemplate="Year %{x}: %{y} hires<extra></extra>",
+    ))
+
+    layout = _base_layout(f"Recruiting Demand & Hires — {scenario_name}")
+    layout.update(
+        barmode="group",
+        xaxis=dict(title="Year", gridcolor=GRID, zeroline=False, tickmode="linear"),
+        yaxis=dict(title="Employees", gridcolor=GRID, zeroline=False),
+    )
+    fig.update_layout(**layout)
+    return fig
+
+
+def grade_snapshot_chart(grade_snapshots: list[dict], selected_year: int) -> go.Figure:
+    """Demographics: horizontal bar chart for grade headcount."""
+    data = grade_snapshots[selected_year]
+    band_order = ["A1", "A2", "B1", "B2", "C1", "C2", "D", "Unknown"]
+    y_labels = list(reversed(band_order))
+    x_values = [data.get(k, 0) for k in y_labels]
+
+    fig = go.Figure(go.Bar(
+        x=x_values, y=y_labels, orientation='h',
+        marker_color=ACCENT,
+        hovertemplate="Grade %{y}: %{x} employees<extra></extra>",
+    ))
+    
+    layout = _base_layout(f"Grade Distribution — Year {selected_year}")
+    layout.update(
+        xaxis=dict(title="Headcount", gridcolor=GRID, zeroline=False),
+        yaxis=dict(title="Grade", gridcolor=GRID, zeroline=False),
     )
     fig.update_layout(**layout)
     return fig

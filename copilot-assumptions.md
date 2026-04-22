@@ -113,6 +113,7 @@ __
 |AS-205|Retirement proxy|Optional maximum dwell period in the oldest age band, after which exit probability becomes 100%.|None unless approved|Dwell-time rule by oldest age band|Provides a softer alternative to fixed-age cut-off|Prototype design option|Engineering Director Owner|Proposed|M|FR-019, R-006|[DD/MM/YYYY]|
 |AS-206|Retirement proxy|Retirement proxy exits must not double-count attrition exits in the same simulation year.|Mutually exclusive exit treatment|Sequenced or reconciled exit logic|Prevents overstating total workforce loss|Model design control|Requester / Customer Owner|Proposed|H|FR-002, FR-019, AC-009, NFR-002|[DD/MM/YYYY]|
 |AS-207|Retirement proxy|Retirement logic is a sensitivity-tested assumption, not a prerequisite for a valid first proof of concept.|Sensitivity-tested|None|Prevents Red dependency from blocking prototype value|Interview outcome|Engineering Director Owner|Accepted|M|R-006, DEP-015, NFR-007|[DD/MM/YYYY]|
+|AS-208|Retirement proxy|Retirement probability scales linearly from the base probability at the threshold age up to 100% at the max age.|Linear interpolation|Exponential or step-function ramp|Simplifies retirement modelling and prevents artificial cliffs at specific ages|Mathematical simplicity|Engineering Director Owner|Accepted|M|AC-009|[DD/MM/YYYY]|
 
 ---
 
@@ -132,6 +133,7 @@ __
 |AS-307|WEI threshold|Definition of “material decline” or tipping point in the WEI.|[TBC threshold / rule]|Absolute drop / relative drop / multi-year decline rule|Needed to convert trend into decision signal|Method governance decision|Engineering Director Owner|Proposed|H|AC-004, R-001, NFR-008|[DD/MM/YYYY]|
 |AS-308|WEI reference population|Definition of the reference profile population.|Current full P&A workforce unless otherwise approved|Experienced-core reference subgroup if explicitly approved|Avoids ambiguity about what “as is” means|Baseline definition + method approval|Engineering Director Owner|Proposed|H|CTX-013, FR-017, R-001|[DD/MM/YYYY]|
 |AS-309|Secondary presentation lenses|Simple cohort crossover and capability-risk views may be used as supporting visuals for simplified discussion.|Include at least one secondary lens|Include both if useful|Allows proportionate communication without stronger claims than evidence supports|Interview outcome|Engineering Director Owner|Accepted|M|CTX-010, FR-009, AC-005, NFR-007|[DD/MM/YYYY]|
+|AS-310|WEI components|Grade-to-Score mapping rules.|A1=1.0, A2=2.0, B1=3.0, B2=4.0, C1=5.0, C2=6.0, D=7.0|Alternative scoring based on capability frameworks|Aligns to internal progression models for simple indexing|Derived assumption|Engineering Director Owner|Proposed|H|FR-007|[DD/MM/YYYY]|
 
 ---
 
@@ -148,6 +150,9 @@ __
 |AS-404|Scenario presets|Projection horizon is scenario-controlled.|[TBC years]|5 / 10 / 15 years or approved alternatives|Time horizon changes tipping-point interpretation|Scenario design choice|Requester / Customer Owner|Proposed|M|FR-014, AC-001, AC-009|[DD/MM/YYYY]|
 |AS-405|Scenario presets|Grade progression / promotion assumptions are scenario-controlled where enabled.|[TBC rule]|No progression / baseline / accelerated progression|Promotion dynamics may affect capability interpretation|Interview outcome|Requester / Customer Owner|Proposed|M|FR-015, AC-009|[DD/MM/YYYY]|
 |AS-406|Scenario presets|Apprentice and graduate populations may be pooled in base case unless separation is required for fidelity.|Pooled unless approved otherwise|Separate apprentice / graduate treatment|Supports pragmatic proof of concept without blocking nuance later|Data readiness and delivery posture|Requester / Customer Owner|Proposed|M|FR-004, DEP-014, R-002|[DD/MM/YYYY]|
+|AS-407|Scenario presets|Experienced hire profiles assume predefined age and grade heuristics based on seniority.|Junior/Mid/Senior profiles|None for v1|Simplifies scenario inputs for gap-filling headcount logic|Simplification|Requester / Customer Owner|Accepted|M|FR-020|[DD/MM/YYYY]|
+|AS-408|Scenario presets|Market strength limits the degree to which headcount gaps can be filled by experienced hires.|Default to 50% fill rate|10% to 100% ranges|Prevents unrealistic assumptions about frictionless hiring|Constraint assumption|Requester / Customer Owner|Accepted|H|AC-013|[DD/MM/YYYY]|
+|AS-409|Scenario presets|Early Careers flow incorporates annual compounding dropouts during their programme.|Default to 10% dropout|0% to 50% slider range|Models realistic attrition before reaching pipeline outturn|Constraint assumption|Requester / Customer Owner|Accepted|H|AC-014|[DD/MM/YYYY]|
 
 ---
 

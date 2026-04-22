@@ -31,7 +31,9 @@ beyond three files requires a recorded justification in the relevant implementat
 ### II. Computational Integrity
 
 The simulation MUST execute in this exact order each year:
-Age+1 → Attrition → Retirement proxy → Early Careers inflow at Age 21 / Grade_Score 1.
+Age+1 → Attrition → Retirement proxy → EC cohort pipeline advancement + outturn →
+Headcount gap calculation → Experienced hires fill (market-strength limited) →
+Metrics recorded (WEI, headcount, age bands, grade snapshot).
 
 Deviation from this order requires explicit governance approval and an assumptions-register update.
 
@@ -84,8 +86,8 @@ All workforce data originates from Workday AP reports. The following rules apply
 - Capability-risk interpretation and wider-sharing approval are owned by the Engineering Director
   (DEP-009 – DEP-010).
 - Initial outputs MUST be stored in the access-controlled P&A Business Operations library (GOV-002).
-- Required CSV columns (`ID`, `Age`, `Service`, `Grade_Score`, `Job_Family`) MUST be validated on load;
-  the app MUST surface a clear error for any missing field.
+- Required CSV columns (`ID`, `Age`, `Service`, `Job_Family`, and either `Grade` or `Grade_Score`)
+  MUST be validated on load; the app MUST surface a clear error for any missing field.
 
 ## Development Standards
 
@@ -114,4 +116,4 @@ before Phase 0 research. The check MUST be re-run after Phase 1 design.
 
 Compliance review is expected at each project milestone and before any wider-sharing event.
 
-**Version**: 1.0.0 | **Ratified**: 2026-04-21 | **Last Amended**: 2026-04-21
+**Version**: 1.1.1 | **Ratified**: 2026-04-21 | **Last Amended**: 2026-04-21
