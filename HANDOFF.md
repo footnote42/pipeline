@@ -56,3 +56,47 @@ All phases ✅ → Phase 8 Polish (T019b–T023) ✅
 ### Design refresh
 - Explicitly deferred — separate `/impeccable` workstream
 - Does not block simulation implementation
+
+---
+
+## UI/UX Audit — Remaining Actions
+
+**Audit date**: 2026-04-22 | **Score**: 17/20 (Good) | **Branch**: `001-simulation-enhancements`
+
+No P0 or P1 issues. App is shippable. Items below are improvements only.
+
+### P2 — Fix before next demo
+
+**1. Heading hierarchy** (`app.py:521, 539, 565, 576, 679, 688`)
+Change all `####` (h4) in-tab section headers to `###` (h3). The page jumps h1 → h4, skipping two levels — WCAG 1.3.1 violation that breaks screen-reader heading navigation.
+
+**2. `prefers-reduced-motion`** (CSS block in `app.py`)
+Add to the bottom of the `<style>` block:
+```css
+@media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+}
+```
+Plotly charts animate on render; users with OS-level reduced-motion get no accommodation.
+
+### P3 — Nice to have
+
+**3. Tokenize alpha-tint literals**
+- `app.py:314` — `rgba(255,92,50,0.10)` in `.tipping-warning` background → add `_danger_tint` to token block
+- `app.py:572` — `rgba(68,74,255,0.35)` in `st.dataframe` Styler bar → extract to a variable
+
+**4. Enumerate custom-component wildcards**
+- `app.py:323` — `.tipping-warning * { color: {_danger} }` → `p, span, strong`
+- `app.py:332` — `.info-card * { color: {_text} }` → `p, span, strong`
+Low-risk (no interactive elements in either div), but inconsistent with the enumerated pattern used everywhere else.
+
+**5. Header inline styles** (`app.py:381, 384`)
+Page header `h1` and `p` use inline `style=` with hard-coded font-family strings. Move to a `.page-header` CSS class rule — only worth doing alongside other edits.
+
+### Audit history
+
+| Date | Score | Notes |
+|------|-------|-------|
+| 2026-04-22 (pass 1) | 12/20 | Baseline |
+| 2026-04-22 (pass 2) | 14/20 | ARIA, contrast, font loading, chart captions, theme-aware dataframe |
+| 2026-04-22 (pass 3) | 17/20 | Widget wildcards enumerated, KPI layout 5→3+2, colour tokens complete |

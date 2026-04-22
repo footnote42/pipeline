@@ -10,96 +10,40 @@ import numpy as np
 import os
 
 from simulation import load_workforce, run_projection, AGE_BAND_LABELS, REQUIRED_COLS
-from charts import wei_trend_chart, age_band_chart, headcount_waterfall, recruiting_demand_chart, grade_snapshot_chart
+from charts import (
+    wei_trend_chart, age_band_chart, headcount_waterfall,
+    recruiting_demand_chart, grade_snapshot_chart,
+)
 
 # ---------------------------------------------------------------------------
-# Page config
+# Page config — must be first Streamlit call
 # ---------------------------------------------------------------------------
 st.set_page_config(
     page_title="Workforce Scenario Modeller",
-    page_icon="📊",
+    page_icon="W",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# ---------------------------------------------------------------------------
-# Custom CSS — dark premium theme
-# ---------------------------------------------------------------------------
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
-html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-
-/* Main background */
-.stApp { background: #0F172A; color: #CBD5E1; }
-
-/* Sidebar */
-[data-testid="stSidebar"] {
-    background: #1E293B;
-    border-right: 1px solid #334155;
-}
-[data-testid="stSidebar"] .stMarkdown h2 {
-    color: #F1F5F9; font-weight: 600; font-size: 1rem;
-    border-bottom: 1px solid #334155; padding-bottom: 0.5rem;
-}
-
-/* Metric cards */
-[data-testid="metric-container"] {
-    background: #1E293B;
-    border: 1px solid #334155;
-    border-radius: 12px;
-    padding: 1rem 1.25rem;
-}
-[data-testid="stMetricValue"] { color: #F1F5F9; font-size: 1.6rem; font-weight: 700; }
-[data-testid="stMetricDelta"] { font-size: 0.85rem; }
-
-/* Tabs */
-[data-testid="stTabs"] button {
-    color: #94A3B8; font-weight: 500;
-    border-bottom: 2px solid transparent;
-}
-[data-testid="stTabs"] button[aria-selected="true"] {
-    color: #6C63FF; border-bottom: 2px solid #6C63FF;
-}
-
-/* Warning banner */
-.tipping-warning {
-    background: linear-gradient(135deg, rgba(255,75,110,0.15), rgba(255,75,110,0.05));
-    border: 1px solid #FF4B6E;
-    border-radius: 12px;
-    padding: 1rem 1.5rem;
-    color: #FDA4AF;
-    font-weight: 500;
-    margin-bottom: 1.25rem;
-}
-
-/* Info card */
-.info-card {
-    background: #1E293B;
-    border: 1px solid #334155;
-    border-radius: 12px;
-    padding: 1rem 1.5rem;
-    margin-bottom: 1rem;
-}
-
-/* Table styling */
-[data-testid="stDataFrameContainer"] { border-radius: 12px; overflow: hidden; }
-</style>
-""", unsafe_allow_html=True)
-
-
-# ---------------------------------------------------------------------------
-# Helper: find the default CSV
-# ---------------------------------------------------------------------------
-DEFAULT_CSV = os.path.join(os.path.dirname(__file__), "data", "sample_workforce.csv")
+DEFAULT_CSV   = os.path.join(os.path.dirname(__file__), "data", "sample_workforce.csv")
 TIPPING_POINT = 0.85
 
+# ---------------------------------------------------------------------------
+# Session state initialisation
+# ---------------------------------------------------------------------------
+if "dark_mode" not in st.session_state:
+    st.session_state.dark_mode = False
+if "results" not in st.session_state:
+    st.session_state.results = None
+if "params" not in st.session_state:
+    st.session_state.params = {}
 
 # ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
 with st.sidebar:
+    st.toggle("Dark mode", key="dark_mode")
+    st.markdown("---")
     st.markdown("## Data Source")
     uploaded = st.file_uploader(
         "Upload Workforce CSV", type=["csv"],
@@ -134,7 +78,7 @@ with st.sidebar:
         l6_intake = st.number_input("L6 Apprentice Intake", min_value=0, max_value=200, value=0, step=5)
         grad_intake = st.number_input("Graduate Intake", min_value=0, max_value=200, value=50, step=5)
         ec_dropout = st.slider("EC Flow Dropout Rate (%)", min_value=0, max_value=50, value=10, step=1) / 100
-        
+
         ec_config = {
             "L3": {"intake": l3_intake, "dropout": ec_dropout},
             "L6": {"intake": l6_intake, "dropout": ec_dropout},
@@ -156,6 +100,258 @@ with st.sidebar:
 
     st.markdown("---")
     run_btn = st.button("Run Simulation", type="primary", use_container_width=True)
+
+# ---------------------------------------------------------------------------
+# Theme tokens — resolved after sidebar so dark_mode is current
+# ---------------------------------------------------------------------------
+dark_mode = st.session_state.dark_mode
+
+if dark_mode:
+    _bg, _surface, _border = "#1A1A1A", "#252525", "#333333"
+    _text, _text_sub       = "#FFFFFF", "#8A949D"   # 5.65:1 on #1A1A1A — AA pass
+else:
+    _bg, _surface, _border = "#FFFFFF", "#F5F5F5", "#E0E0E0"
+    _text, _text_sub       = "#1A1A1A", "#636D78"   # 5.25:1 on #FFFFFF — AA pass
+
+_accent      = "#444AFF"
+_danger      = "#FF5C32"
+_accent_tint = "rgba(68,74,255,0.12)"
+
+# ---------------------------------------------------------------------------
+# Custom CSS — design system aligned, theme-aware
+# ---------------------------------------------------------------------------
+# Font loading — preconnect eliminates TCP handshake delay; <link> is non-blocking unlike @import
+st.markdown("""
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=Manrope:wght@200..800&display=swap">
+""", unsafe_allow_html=True)
+
+st.markdown(f"""
+<style>
+
+/* ── Streamlit theme variable overrides ── */
+:root {{
+    --primary-color: {_accent};
+    --background-color: {_bg};
+    --secondary-background-color: {_surface};
+    --text-color: {_text};
+}}
+
+/* ── Base ── */
+html, body, [class*="css"] {{
+    font-family: 'Manrope', sans-serif;
+    color: {_text};
+}}
+h1, h2, h3, h4, h5, h6 {{
+    font-family: 'Bricolage Grotesque', sans-serif;
+    color: {_text} !important;
+}}
+p {{ color: {_text}; }}
+
+.stApp {{ background: {_bg}; color: {_text}; }}
+
+/* Main block — catches most body text Streamlit renders */
+[data-testid="stMainBlockContainer"],
+[data-testid="stVerticalBlock"],
+[data-testid="stHorizontalBlock"] {{
+    color: {_text};
+}}
+[data-testid="stMainBlockContainer"] p,
+[data-testid="stMainBlockContainer"] span,
+[data-testid="stMainBlockContainer"] li,
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stMarkdownContainer"] span {{
+    color: {_text} !important;
+}}
+
+/* ── Sidebar ── */
+[data-testid="stSidebar"] {{
+    background: {_surface};
+    border-right: 1px solid {_border};
+}}
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] span,
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] h1,
+[data-testid="stSidebar"] h2,
+[data-testid="stSidebar"] h3,
+[data-testid="stSidebar"] h4,
+[data-testid="stSidebar"] small,
+[data-testid="stSidebar"] button,
+[data-testid="stSidebar"] a {{ color: {_text} !important; }}
+[data-testid="stSidebar"] .stMarkdown h2 {{
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-weight: 600; font-size: 1rem;
+    border-bottom: 1px solid {_border}; padding-bottom: 0.5rem;
+}}
+
+/* ── Widget labels & captions ── */
+label, [data-testid="stWidgetLabel"] p {{ color: {_text} !important; }}
+[data-testid="stCaptionContainer"] p {{ color: {_text_sub} !important; }}
+
+/* ── File uploader ── */
+[data-testid="stFileUploaderDropzone"],
+[data-testid="stFileUploadDropzone"] {{
+    background: {_bg} !important;
+    border: 2px dashed {_border} !important;
+}}
+[data-testid="stFileUploaderDropzone"] p,
+[data-testid="stFileUploaderDropzone"] span,
+[data-testid="stFileUploaderDropzone"] small,
+[data-testid="stFileUploaderDropzone"] button,
+[data-testid="stFileUploadDropzone"] p,
+[data-testid="stFileUploadDropzone"] span,
+[data-testid="stFileUploadDropzone"] small,
+[data-testid="stFileUploadDropzone"] button {{ color: {_text} !important; }}
+[data-testid="stFileUploaderDropzoneInstructions"] span,
+[data-testid="stFileUploaderDropzoneInstructions"] small {{
+    color: {_text_sub} !important;
+}}
+
+/* ── Expanders ── */
+[data-testid="stExpander"] {{
+    border: 1px solid {_border} !important;
+    border-radius: 8px;
+    background: {_surface} !important;
+}}
+[data-testid="stExpander"] summary,
+[data-testid="stExpander"] summary p,
+[data-testid="stExpander"] summary span,
+[data-testid="stExpanderToggleIcon"] {{ color: {_text} !important; }}
+[data-testid="stExpander"] > div {{ background: {_surface} !important; }}
+
+/* ── Inputs & number fields ── */
+input, textarea {{
+    color: {_text} !important;
+    background: {_bg} !important;
+    border-color: {_border} !important;
+}}
+
+/* ── Selectbox ── */
+[data-testid="stSelectbox"] p,
+[data-testid="stSelectbox"] span,
+[data-testid="stSelectbox"] label {{ color: {_text} !important; }}
+[data-testid="stSelectbox"] [data-baseweb="select"] > div {{
+    background: {_bg} !important;
+    border-color: {_border} !important;
+}}
+/* Dropdown list */
+[data-baseweb="popover"] [role="listbox"],
+[data-baseweb="popover"] [role="option"] {{
+    background: {_surface} !important;
+    color: {_text} !important;
+}}
+[data-baseweb="popover"] [aria-selected="true"] {{
+    background: {_accent_tint} !important;
+    color: {_accent} !important;
+}}
+
+/* ── Multiselect ── */
+[data-testid="stMultiSelect"] p,
+[data-testid="stMultiSelect"] span,
+[data-testid="stMultiSelect"] label,
+[data-testid="stMultiSelect"] input {{ color: {_text} !important; }}
+[data-testid="stMultiSelect"] [data-baseweb="select"] > div {{
+    background: {_bg} !important;
+    border-color: {_border} !important;
+}}
+[data-baseweb="tag"] {{
+    background: {_accent_tint} !important;
+}}
+[data-baseweb="tag"] span {{ color: {_text} !important; }}
+
+/* ── Radio ── */
+[data-testid="stRadio"] p,
+[data-testid="stRadio"] span,
+[data-testid="stRadio"] label,
+[data-testid="stRadio"] div {{ color: {_text} !important; }}
+
+/* ── Slider ── */
+[data-testid="stSlider"] p, [data-testid="stSlider"] span {{ color: {_text} !important; }}
+
+/* ── Toggle ── */
+[data-testid="stToggle"] p {{ color: {_text} !important; }}
+
+/* ── Metric cards ── */
+[data-testid="metric-container"] {{
+    background: {_surface};
+    border: 1px solid {_border};
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+}}
+[data-testid="stMetricValue"] {{
+    color: {_text} !important;
+    font-size: 1.6rem; font-weight: 700;
+    font-family: 'Bricolage Grotesque', sans-serif;
+}}
+[data-testid="stMetricDelta"] {{ font-size: 0.85rem; }}
+[data-testid="stMetricLabel"] p {{ color: {_text_sub} !important; font-size: 0.85rem; }}
+
+/* ── Tabs ── */
+[data-testid="stTabs"] button {{
+    color: {_text_sub}; font-weight: 500;
+    border-bottom: 2px solid transparent;
+    font-family: 'Manrope', sans-serif;
+}}
+[data-testid="stTabs"] button[aria-selected="true"] {{
+    color: {_accent} !important; border-bottom: 2px solid {_accent};
+}}
+/* Tab content area */
+[data-testid="stTabsContent"] p,
+[data-testid="stTabsContent"] span,
+[data-testid="stTabsContent"] h1,
+[data-testid="stTabsContent"] h2,
+[data-testid="stTabsContent"] h3,
+[data-testid="stTabsContent"] h4,
+[data-testid="stTabsContent"] li {{ color: {_text}; }}
+
+/* ── Streamlit native alerts (st.info etc.) ── */
+[data-testid="stAlert"] p {{ color: {_text} !important; }}
+
+/* ── Custom components ── */
+.tipping-warning {{
+    background: rgba(255,92,50,0.10);
+    border: 1px solid {_danger};
+    border-radius: 12px;
+    padding: 1rem 1.5rem;
+    color: {_danger} !important;
+    font-weight: 500;
+    margin-bottom: 1.25rem;
+    max-width: 80ch;
+}}
+.tipping-warning * {{ color: {_danger} !important; }}
+.info-card {{
+    background: {_surface};
+    border: 1px solid {_border};
+    border-radius: 12px;
+    padding: 1rem 1.5rem;
+    margin: 1rem 0;
+    max-width: 80ch;
+}}
+.info-card * {{ color: {_text}; }}
+
+/* ── Dataframe ── */
+[data-testid="stDataFrameContainer"] {{ border-radius: 12px; overflow: hidden; }}
+
+/* ── Spacing utility ── */
+.spacer {{ height: 1rem; }}
+
+/* ── Screen-reader only utility ── */
+.sr-only {{
+    position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}}
+
+/* ── Responsive KPI row ── */
+@media (max-width: 900px) {{
+    [data-testid="stMetricValue"] {{ font-size: 1.1rem !important; }}
+    [data-testid="stMetricLabel"] p {{ font-size: 0.75rem !important; }}
+    [data-testid="stMetricDelta"] {{ font-size: 0.75rem !important; }}
+}}
+</style>
+""", unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------
@@ -180,12 +376,12 @@ baseline_df = load_data()
 # ---------------------------------------------------------------------------
 # Header
 # ---------------------------------------------------------------------------
-st.markdown("""
+st.markdown(f"""
 <div style="padding: 1.5rem 0 1rem 0;">
-    <h1 style="color:#F1F5F9; font-size:2rem; font-weight:700; margin:0;">
+    <h1 style="font-family:'Bricolage Grotesque',sans-serif; color:{_text}; font-size:2rem; font-weight:700; margin:0;">
         Workforce Scenario Modeller
     </h1>
-    <p style="color:#64748B; margin:0.25rem 0 0 0; font-size:0.95rem;">
+    <p style="font-family:'Manrope',sans-serif; color:{_text_sub}; margin:0.25rem 0 0 0; font-size:0.95rem;">
         Year-on-year projection of workforce age, experience, and capability risk
     </p>
 </div>
@@ -196,13 +392,8 @@ if baseline_df is None:
     st.stop()
 
 # ---------------------------------------------------------------------------
-# Session state for results
+# Simulation — auto-run on first load or param change
 # ---------------------------------------------------------------------------
-if "results" not in st.session_state:
-    st.session_state.results = None
-if "params" not in st.session_state:
-    st.session_state.params = {}
-
 current_params = dict(
     attrition_rate=attrition_rate, retirement_age_threshold=retirement_age,
     retirement_max_age=retirement_max_age,
@@ -214,56 +405,54 @@ current_params = dict(
     market_strength=market_strength,
 )
 
-# Auto-run on first load or when params change
 if run_btn or st.session_state.results is None or st.session_state.params != current_params:
     with st.spinner("Running projection..."):
-        st.session_state.results = run_projection(
-            baseline_df, **current_params
-        )
+        st.session_state.results = run_projection(baseline_df, **current_params)
     st.session_state.params = current_params
 
-results = st.session_state.results
-years_axis = list(range(projection_years + 1))
-wei_series = results["wei_series"]
-headcount  = results["headcount"]
+results     = st.session_state.results
+years_axis  = list(range(projection_years + 1))
+wei_series  = results["wei_series"]
+headcount   = results["headcount"]
 
 # ---------------------------------------------------------------------------
 # KPI row
 # ---------------------------------------------------------------------------
-final_wei   = wei_series[-1]
-peak_wf     = max(headcount)
-trough_yr   = next((y for y, w in enumerate(wei_series) if w < TIPPING_POINT), None)
+final_wei  = wei_series[-1]
+trough_yr  = next((y for y, w in enumerate(wei_series) if w < TIPPING_POINT), None)
 
-col1, col2, col3, col4, col5 = st.columns(5)
-with col1:
-    st.metric("Baseline Headcount",  f"{len(baseline_df):,}")
-with col2:
+kpi_row1 = st.columns(3)
+kpi_row2 = st.columns(2)
+with kpi_row1[0]:
+    st.metric("Baseline Headcount", f"{len(baseline_df):,}")
+with kpi_row1[1]:
     st.metric(f"Year {projection_years} WEI", f"{final_wei:.3f}",
               delta=f"{final_wei - 1.0:+.3f} vs baseline",
               delta_color="inverse")
-with col3:
+with kpi_row1[2]:
     st.metric(f"Year {projection_years} Headcount", f"{headcount[-1]:,}",
               delta=f"{headcount[-1] - headcount[0]:+,}")
-with col4:
+with kpi_row2[0]:
     if trough_yr is not None:
         st.metric("Tipping Point (WEI < 0.85)", f"Year {trough_yr}", delta="Risk identified", delta_color="inverse")
     else:
         st.metric("Tipping Point (WEI < 0.85)", "Not reached", delta="Within safe range", delta_color="normal")
-with col5:
+with kpi_row2[1]:
     if results.get("recruiting_demand"):
         total_demand = sum(results["recruiting_demand"])
-        total_hires = sum(results["experienced_hires_added"])
+        total_hires  = sum(results["experienced_hires_added"])
         st.metric("Total Recruiting Demand", f"{int(total_demand):,}", delta=f"{int(total_hires):,} hired")
     else:
         st.metric("Total Recruiting Demand", "N/A", delta="No ceiling")
 
-st.markdown("<div style='margin-top:1rem;'></div>", unsafe_allow_html=True)
+st.markdown('<div class="spacer"></div>', unsafe_allow_html=True)
 
 # Tipping-point warning banner
 if trough_yr is not None:
     st.markdown(
-        f"""<div class="tipping-warning">
-        &#9888; WEI drops below 0.85 at <strong>Year {trough_yr}</strong>
+        f"""<div class="tipping-warning" role="alert" aria-live="polite">
+        <span aria-hidden="true">&#9888;</span><span class="sr-only">Warning:</span>
+        WEI drops below 0.85 at <strong>Year {trough_yr}</strong>
         (WEI = {wei_series[trough_yr]:.3f}).
         Sustained experience erosion is likely without targeted intervention.
         </div>""",
@@ -277,25 +466,53 @@ tab1, tab2, tab3 = st.tabs(["Executive Summary", "Demographics", "Assumptions"])
 
 # ---- Tab 1: Executive Summary -----------------------------------------------
 with tab1:
-    annual_intake = l3_intake + l6_intake + grad_intake
+    annual_intake  = l3_intake + l6_intake + grad_intake
     scenario_label = (
         f"Attrition {attrition_rate:.0%} | Retirement threshold {retirement_age} | Intake {annual_intake}/yr"
     )
-    fig_wei = wei_trend_chart(years_axis, wei_series, headcount, scenario_label, ceiling=current_params["ceiling"])
+    fig_wei = wei_trend_chart(
+        years_axis, wei_series, headcount, scenario_label,
+        ceiling=current_params["ceiling"], dark=dark_mode,
+    )
     st.plotly_chart(fig_wei, use_container_width=True)
+    if trough_yr is not None:
+        st.caption(
+            f"WEI declines from 1.00 to {final_wei:.3f} over {projection_years} years. "
+            f"The tipping point (WEI < 0.85) is first reached at Year {trough_yr} "
+            f"(WEI = {wei_series[trough_yr]:.3f}). Headcount ends at {headcount[-1]:,}."
+        )
+    else:
+        st.caption(
+            f"WEI moves from 1.00 to {final_wei:.3f} over {projection_years} years, "
+            f"remaining above the 0.85 tipping-point threshold throughout. "
+            f"Headcount ends at {headcount[-1]:,}."
+        )
 
-    st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
-    st.plotly_chart(headcount_waterfall(headcount, years_axis), use_container_width=True)
+    st.markdown('<div class="spacer"></div>', unsafe_allow_html=True)
+    st.plotly_chart(headcount_waterfall(headcount, years_axis, dark=dark_mode), use_container_width=True)
+    _net = headcount[-1] - headcount[0]
+    st.caption(
+        f"Net headcount {'increases' if _net >= 0 else 'decreases'} from "
+        f"{headcount[0]:,} to {headcount[-1]:,} over {projection_years} years "
+        f"(net {'+' if _net >= 0 else ''}{_net:,})."
+    )
 
     if results.get("recruiting_demand"):
         fig_demand = recruiting_demand_chart(
             years_axis[1:],
             results["recruiting_demand"],
             results["experienced_hires_added"],
-            scenario_label
+            scenario_label,
+            dark=dark_mode,
         )
-        st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
+        st.markdown('<div class="spacer"></div>', unsafe_allow_html=True)
         st.plotly_chart(fig_demand, use_container_width=True)
+        _total_demand = sum(results["recruiting_demand"])
+        _total_hires  = sum(results["experienced_hires_added"])
+        st.caption(
+            f"Cumulative recruiting demand over {projection_years} years: {int(_total_demand):,} roles. "
+            f"{int(_total_hires):,} hires added; {int(_total_demand - _total_hires):,} unfilled gap."
+        )
 
 # ---- Tab 2: Demographics ----------------------------------------------------
 with tab2:
@@ -303,17 +520,26 @@ with tab2:
 
     st.markdown("#### Grade Distribution")
     st.caption("Headcount overview per grade for a specific year.")
-    selected_grade_year = st.slider("Select Year for Grade Snapshot", min_value=0, max_value=max_yr, value=max_yr, step=1)
-    
+    selected_grade_year = st.slider(
+        "Select Year for Grade Snapshot", min_value=0, max_value=max_yr, value=max_yr, step=1
+    )
+
     if results.get("grade_snapshots"):
-        fig_grades = grade_snapshot_chart(results["grade_snapshots"], selected_grade_year)
+        fig_grades = grade_snapshot_chart(results["grade_snapshots"], selected_grade_year, dark=dark_mode)
         st.plotly_chart(fig_grades, use_container_width=True)
+        _gdata = results["grade_snapshots"][selected_grade_year]
+        _top_grade = max(_gdata, key=_gdata.get) if _gdata else "—"
+        _total_graded = sum(_gdata.values())
+        st.caption(
+            f"Year {selected_grade_year}: {_total_graded:,} employees across all grades. "
+            f"Largest group: Grade {_top_grade} ({_gdata.get(_top_grade, 0):,} employees)."
+        )
 
     st.markdown("---")
     st.markdown("#### Age-Band Distribution")
     st.caption("Select which years to display in the comparison view.")
 
-    default_years = sorted(set([0, max_yr // 2, max_yr]))
+    default_years   = sorted(set([0, max_yr // 2, max_yr]))
     selected_display = st.multiselect(
         "Years to compare",
         options=list(range(max_yr + 1)),
@@ -322,12 +548,20 @@ with tab2:
     )
 
     if selected_display:
-        fig_bands = age_band_chart(results["age_bands"], selected_display)
+        fig_bands = age_band_chart(results["age_bands"], selected_display, dark=dark_mode)
         st.plotly_chart(fig_bands, use_container_width=True)
+        _yr_labels = " vs ".join(
+            f"Year {y}" + (" (Baseline)" if y == 0 else "") for y in sorted(selected_display)
+        )
+        _band_totals = {
+            y: int(results["age_bands"][y].sum()) for y in selected_display
+            if y in results["age_bands"]
+        }
+        _totals_str = "; ".join(f"Year {y}: {t:,}" for y, t in sorted(_band_totals.items()))
+        st.caption(f"Age-band comparison — {_yr_labels}. Total headcount: {_totals_str}.")
     else:
         st.info("Select at least one year above.")
 
-    # Age-band table
     st.markdown("#### Age-Band Summary Table")
     band_rows = {}
     for yr in range(max_yr + 1):
@@ -335,7 +569,7 @@ with tab2:
         band_rows[f"Year {yr}"] = {b: int(series.get(b, 0)) for b in AGE_BAND_LABELS}
     band_df = pd.DataFrame(band_rows).T
     band_df["Total"] = band_df.sum(axis=1)
-    st.dataframe(band_df.style.background_gradient(cmap="Blues", axis=1), use_container_width=True)
+    st.dataframe(band_df.style.bar(color="rgba(68,74,255,0.35)", axis=1), use_container_width=True)
 
 # ---- Tab 3: Assumptions -----------------------------------------------------
 with tab3:
@@ -430,9 +664,9 @@ with tab3:
 
     st.dataframe(assumptions, use_container_width=True, hide_index=True)
 
-    st.markdown("""
-    <div class="info-card" style="margin-top:1rem;">
-        <strong style="color:#F1F5F9;">Method note (AS-302 / AS-507)</strong><br>
+    st.markdown(f"""
+    <div class="info-card">
+        <strong style="color:{_text};">Method note (AS-302 / AS-507)</strong><br>
         <span style="font-size:0.9rem;">
         This model uses the reference-profile WEI method: all projected states are compared against
         the current &ldquo;as-is&rdquo; workforce (WEI = 1.0). Claims made from this output are
@@ -444,9 +678,9 @@ with tab3:
 
     st.markdown("#### Scenario Summary")
     summary_df = pd.DataFrame({
-        "Year": [f"Year {y}" for y in years_axis],
-        "WEI": wei_series,
-        "Headcount": headcount,
+        "Year":       [f"Year {y}" for y in years_axis],
+        "WEI":        wei_series,
+        "Headcount":  headcount,
         "WEI Status": ["Below tipping point" if w < TIPPING_POINT else "Within safe range" for w in wei_series],
     })
     st.dataframe(summary_df, use_container_width=True, hide_index=True)
