@@ -143,10 +143,10 @@ with st.sidebar:
 
     with st.expander("Experienced Hires", expanded=False):
         exp_hire_profile = st.radio("Hire Profile Seniority", options=["junior", "mid", "senior"], index=1)
-        market_strength = st.slider(
-            "Market Strength Fill Rate (%)", min_value=0, max_value=100, value=50, step=10,
-            help="Percentage of the unfilled headcount gap that can be filled by experienced hires."
-        ) / 100
+        market_strength = st.selectbox(
+            "Market Strength", options=["weak", "moderate", "strong"], index=1,
+            help="Recruiting market strength preset."
+        )
 
     with st.expander("Headcount Ceiling", expanded=False):
         ceiling = st.number_input("Maximum Headcount", min_value=500, value=1100, step=10)
@@ -277,6 +277,7 @@ tab1, tab2, tab3 = st.tabs(["Executive Summary", "Demographics", "Assumptions"])
 
 # ---- Tab 1: Executive Summary -----------------------------------------------
 with tab1:
+    annual_intake = l3_intake + l6_intake + grad_intake
     scenario_label = (
         f"Attrition {attrition_rate:.0%} | Retirement threshold {retirement_age} | Intake {annual_intake}/yr"
     )
