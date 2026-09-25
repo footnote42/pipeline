@@ -7,6 +7,7 @@ PARKED — workforce WEI simulation, spec 001 implemented, awaiting validation a
 Run T023 end-to-end manual validation per `specs/001-simulation-enhancements/quickstart.md` (`PYTHONUTF8=1 streamlit run app.py`, 5 scenarios).
 
 ## Context
+- **Housekeeping on return (flagged 2026-09-25):** two untracked 1920x1080 screenshots from April with no related work. Delete them or move them out of the repo.
 - Obsidian: `C:/Users/kenho/Obsidian/Second Brain/Projects/Pipeline/` (logs + Assumptions/Requirements docs)
 - Handoff: `HANDOFF.md` (phase map, all T001–T023 marked done; T023 run unconfirmed)
 - Spec: `specs/001-simulation-enhancements/`
