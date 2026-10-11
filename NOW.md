@@ -1,7 +1,7 @@
 # NOW — pipline
 
 ## Status
-PARKED — workforce WEI simulation, spec 001 implemented, awaiting validation and UI refresh
+PARKED — workforce WEI simulation, spec 001 implemented, awaiting validation and UI refresh. Decision Day #6 (2026-10-11): parked on purpose, not killed. It was a work demonstrator and could go further. **Review position 2026-12-11.**
 
 ## Next
 Run T023 end-to-end manual validation per `specs/001-simulation-enhancements/quickstart.md` (`PYTHONUTF8=1 streamlit run app.py`, 5 scenarios).
