@@ -1,7 +1,7 @@
 # NOW — pipline
 
 ## Status
-PARKED — workforce WEI simulation, spec 001 implemented, awaiting validation and UI refresh. Decision Day #6 (2026-10-11): parked on purpose, not killed. It was a work demonstrator and could go further. **Review position 2026-12-11.**
+PARKED — workforce WEI simulation, spec 001 implemented, awaiting validation and UI refresh. Decision Day #6 (2026-10-11): parked on purpose, not killed. It was a work demonstrator and could go further. **Review position 2026-12-14** (moved from 11 Dec on 2026-10-27 to match the "In an AI or data role" goal review; question then: does it serve the AI Coach role, building software independently to support the mission?).
 
 ## Next
 Run T023 end-to-end manual validation per `specs/001-simulation-enhancements/quickstart.md` (`PYTHONUTF8=1 streamlit run app.py`, 5 scenarios).
